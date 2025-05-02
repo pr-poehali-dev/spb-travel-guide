@@ -2,8 +2,9 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Attraction } from '@/types/attractions';
-import { cityDistricts, riverPaths, bridges } from '@/data/attractions';
+import { cityDistricts, riverPaths, bridges, streets } from '@/data/attractions';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import Icon from '@/components/ui/icon';
 
 interface CityMapProps {
   attractions: Attraction[];
@@ -13,12 +14,22 @@ interface CityMapProps {
 
 const CityMap = ({ attractions, selectedAttraction, onAttractionClick }: CityMapProps) => {
   const [hoveredDistrict, setHoveredDistrict] = useState<string | null>(null);
+  const [hoveredStreet, setHoveredStreet] = useState<string | null>(null);
   const [showLayers, setShowLayers] = useState({
     districts: true,
     rivers: true,
     bridges: true,
+    streets: true,
     attractions: true
   });
+
+  // Find which street the selected attraction is on
+  const selectedAttractionData = attractions.find(attr => attr.id === selectedAttraction);
+  const selectedStreet = selectedAttractionData?.street || null;
+
+  const handleStreetHover = (streetName: string | null) => {
+    setHoveredStreet(streetName);
+  };
 
   return (
     <Card className="mb-6">
@@ -28,7 +39,7 @@ const CityMap = ({ attractions, selectedAttraction, onAttractionClick }: CityMap
             <CardTitle>City Map</CardTitle>
             <CardDescription>Interactive Map of St. Petersburg</CardDescription>
           </div>
-          <div className="flex gap-1 text-xs">
+          <div className="flex gap-1 text-xs flex-wrap justify-end">
             {Object.entries(showLayers).map(([key, value]) => (
               <button
                 key={key}
@@ -84,6 +95,50 @@ const CityMap = ({ attractions, selectedAttraction, onAttractionClick }: CityMap
               </Tooltip>
             </TooltipProvider>
           ))}
+
+          {/* Streets */}
+          {showLayers.streets && (
+            <svg className="absolute inset-0 w-full h-full" style={{ zIndex: 7 }}>
+              {streets.map((street) => {
+                // Generate the SVG path string from the points
+                const pathData = street.points.map((point, index) => 
+                  `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`
+                ).join(' ');
+                
+                const isHighlighted = street.name === selectedStreet || street.name === hoveredStreet;
+                
+                return (
+                  <g key={street.id}>
+                    <path
+                      d={pathData}
+                      fill="none"
+                      stroke={street.color}
+                      strokeWidth={isHighlighted ? street.width * 1.5 : street.width}
+                      strokeLinecap="round"
+                      strokeOpacity={isHighlighted ? "1" : "0.7"}
+                      onMouseEnter={() => handleStreetHover(street.name)}
+                      onMouseLeave={() => handleStreetHover(null)}
+                      className={`cursor-help transition-all duration-300 ${isHighlighted ? 'street-glow' : ''}`}
+                    />
+                    
+                    {/* Street labels */}
+                    {street.isMainStreet && (
+                      <text 
+                        x={street.points[Math.floor(street.points.length / 2)].x}
+                        y={street.points[Math.floor(street.points.length / 2)].y - 5}
+                        fontSize="7"
+                        fill="#333"
+                        textAnchor="middle"
+                        className="pointer-events-none street-label"
+                      >
+                        {street.name}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          )}
 
           {/* Rivers */}
           {showLayers.rivers && (
@@ -154,32 +209,41 @@ const CityMap = ({ attractions, selectedAttraction, onAttractionClick }: CityMap
           </div>
           
           {/* Attraction markers */}
-          {showLayers.attractions && attractions.map((attraction) => (
-            <TooltipProvider key={attraction.id}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    className={`absolute w-6 h-6 rounded-full flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 transition-all duration-200 hover:scale-110 ${
-                      selectedAttraction === attraction.id 
-                        ? 'bg-red-500 text-white ring-4 ring-red-200' 
-                        : 'bg-white text-red-500 border-2 border-red-500'
-                    }`}
-                    style={{ 
-                      top: `${attraction.coordinates.y}%`, 
-                      left: `${attraction.coordinates.x}%`,
-                      zIndex: selectedAttraction === attraction.id ? 30 : 20
-                    }}
-                    onClick={() => onAttractionClick(attraction.id)}
-                  >
-                    <span className="text-xs font-bold">{attraction.id}</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{attraction.name}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ))}
+          {showLayers.attractions && attractions.map((attraction) => {
+            const isOnSelectedStreet = selectedStreet && attraction.street === selectedStreet;
+            
+            return (
+              <TooltipProvider key={attraction.id}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={`absolute rounded-full flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 transition-all duration-200 hover:scale-110 ${
+                        selectedAttraction === attraction.id 
+                          ? 'bg-red-500 text-white ring-4 ring-red-200 w-7 h-7' 
+                          : isOnSelectedStreet
+                            ? 'bg-orange-400 text-white border-2 border-orange-500 w-6 h-6'
+                            : 'bg-white text-red-500 border-2 border-red-500 w-6 h-6'
+                      }`}
+                      style={{ 
+                        top: `${attraction.coordinates.y}%`, 
+                        left: `${attraction.coordinates.x}%`,
+                        zIndex: selectedAttraction === attraction.id ? 30 : (isOnSelectedStreet ? 25 : 20)
+                      }}
+                      onClick={() => onAttractionClick(attraction.id)}
+                    >
+                      <span className="text-xs font-bold">{attraction.id}</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="flex flex-col">
+                      <p className="font-bold">{attraction.name}</p>
+                      <p className="text-xs text-gray-500">{attraction.street}</p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          })}
 
           {/* Map legend */}
           <div className="absolute top-4 left-4 bg-white bg-opacity-80 p-2 rounded shadow-sm" style={{ zIndex: 25 }}>
@@ -196,9 +260,74 @@ const CityMap = ({ attractions, selectedAttraction, onAttractionClick }: CityMap
               <div className="w-3 h-1 bg-blue-500 mr-1"></div>
               <span>Rivers</span>
             </div>
-            <div className="flex items-center text-xs">
+            <div className="flex items-center text-xs mb-1">
               <div className="w-3 h-1 bg-gray-700 mr-1"></div>
               <span>Bridges</span>
+            </div>
+            <div className="flex items-center text-xs">
+              <div className="w-3 h-1 bg-orange-500 mr-1"></div>
+              <span>Streets</span>
+            </div>
+          </div>
+
+          {/* Street info popup */}
+          {hoveredStreet && (
+            <div 
+              className="absolute bottom-16 left-1/2 transform -translate-x-1/2 bg-white py-1 px-3 rounded shadow-md text-xs"
+              style={{ zIndex: 35 }}
+            >
+              {hoveredStreet}
+            </div>
+          )}
+
+          {/* "Show me" button */}
+          <div className="absolute top-4 right-4" style={{ zIndex: 25 }}>
+            <div className="bg-white bg-opacity-80 rounded shadow-sm overflow-hidden">
+              <button 
+                className="flex items-center justify-center text-xs px-3 py-1.5 hover:bg-blue-50"
+                onClick={() => {
+                  setShowLayers({
+                    districts: false,
+                    rivers: true,
+                    bridges: true,
+                    streets: true,
+                    attractions: true
+                  });
+                }}
+              >
+                <Icon name="MapPin" size={12} className="mr-1" />
+                Show attractions only
+              </button>
+              <button 
+                className="flex items-center justify-center text-xs px-3 py-1.5 hover:bg-blue-50 border-t border-gray-200"
+                onClick={() => {
+                  setShowLayers({
+                    districts: false,
+                    rivers: false,
+                    bridges: false,
+                    streets: true,
+                    attractions: true
+                  });
+                }}
+              >
+                <Icon name="Map" size={12} className="mr-1" />
+                Show streets only
+              </button>
+              <button 
+                className="flex items-center justify-center text-xs px-3 py-1.5 hover:bg-blue-50 border-t border-gray-200"
+                onClick={() => {
+                  setShowLayers({
+                    districts: true,
+                    rivers: true,
+                    bridges: true,
+                    streets: true,
+                    attractions: true
+                  });
+                }}
+              >
+                <Icon name="Layers" size={12} className="mr-1" />
+                Show all layers
+              </button>
             </div>
           </div>
         </div>
